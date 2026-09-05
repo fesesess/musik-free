@@ -2,5 +2,5 @@ services:
   - type: web
     name: musik-free
     env: node
-    buildCommand: npm install && pip install yt-dlp
+    buildCommand: npm install && pip3 install yt-dlp
     startCommand: node server.js
