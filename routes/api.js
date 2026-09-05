@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
+const YandexMusicApi = require('yandex-music-api');
 
 let tracksStore = [];
 
+const yandexSessionId = process.env.YANDEX_SESSION_ID || '';
+const yandexUid = process.env.YANDEX_UID || '';
+
+// Поиск в Яндекс Музыке
 router.post('/search', async (req, res) => {
   const { query } = req.body;
 
@@ -12,128 +17,74 @@ router.post('/search', async (req, res) => {
   }
 
   try {
-    const audiusResults = await searchAudius(query);
-    const itunesResults = await searchItunes(query);
+    const api = new YandexMusicApi();
     
-    const allResults = [...audiusResults, ...itunesResults];
+    if (yandexSessionId && yandexUid) {
+      await api.setSession({
+        sessionId: yandexSessionId,
+        uid: parseInt(yandexUid)
+      });
+    }
+
+    const searchResult = await api.searchTracks(query);
     
-    res.json({ success: true, results: allResults });
+    const results = (searchResult.tracks?.results || []).slice(0, 10).map(track => ({
+      title: track.title || 'Без названия',
+      artist: track.artists?.map(a => a.name).join(', ') || 'Неизвестен',
+      videoId: track.id || '',
+      duration: Math.round((track.durationMs || 0) / 1000),
+      source: 'Яндекс Музыка'
+    })).filter(r => r.videoId);
+
+    res.json({ success: true, results });
   } catch (err) {
-    res.status(500).json({ error: 'Ошибка поиска' });
+    console.error('Yandex error:', err);
+    res.status(500).json({ error: 'Ошибка поиска в Яндекс Музыке' });
   }
 });
 
-function searchAudius(query) {
-  return new Promise((resolve) => {
-    const url = `https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&limit=10`;
-
-    https.get(url, {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'MusikFree/1.0'
-      }
-    }, (response) => {
-      let data = '';
-      response.on('data', chunk => data += chunk);
-      response.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const results = (json.data || []).map(item => ({
-            title: item.title || 'Без названия',
-            artist: item.user?.name || 'Неизвестен',
-            videoId: item.id || '',
-            duration: Math.round(item.duration || 0),
-            source: 'Audius',
-            isFull: true
-          })).filter(r => r.videoId);
-          resolve(results);
-        } catch (err) {
-          resolve([]);
-        }
-      });
-    }).on('error', () => resolve([]));
-  });
-}
-
-function searchItunes(query) {
-  return new Promise((resolve) => {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=5`;
-
-    https.get(url, (response) => {
-      let data = '';
-      response.on('data', chunk => data += chunk);
-      response.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          const results = json.results.map(item => ({
-            title: item.trackName || 'Без названия',
-            artist: item.artistName || 'Неизвестен',
-            videoId: item.previewUrl || '',
-            duration: 30,
-            source: 'iTunes',
-            isFull: false
-          })).filter(r => r.videoId);
-          resolve(results);
-        } catch (err) {
-          resolve([]);
-        }
-      });
-    }).on('error', () => resolve([]));
-  });
-}
-
-router.post('/download', (req, res) => {
-  const { videoId, title, artist, source } = req.body;
+// Скачивание из Яндекс Музыки
+router.post('/download', async (req, res) => {
+  const { videoId, title, artist } = req.body;
 
   if (!videoId) {
     return res.status(400).json({ error: 'Выбери трек' });
   }
 
-  if (source === 'Audius') {
-    downloadAudius(videoId, title, artist, res);
-  } else {
-    downloadItunes(videoId, title, artist, res);
+  try {
+    const api = new YandexMusicApi();
+    
+    if (yandexSessionId && yandexUid) {
+      await api.setSession({
+        sessionId: yandexSessionId,
+        uid: parseInt(yandexUid)
+      });
+    }
+
+    const downloadUrl = await api.getTrackDownloadUrl(videoId);
+    
+    if (!downloadUrl) {
+      return res.status(500).json({ error: 'Не удалось получить ссылку на скачивание' });
+    }
+
+    https.get(downloadUrl, (response) => {
+      if (response.statusCode === 302 || response.statusCode === 301) {
+        https.get(response.headers.location, (redirectRes) => {
+          pipeResponse(redirectRes, res, title, artist);
+        }).on('error', () => {
+          res.status(500).json({ error: 'Скачивание недоступно' });
+        });
+      } else {
+        pipeResponse(response, res, title, artist);
+      }
+    }).on('error', () => {
+      res.status(500).json({ error: 'Скачивание недоступно' });
+    });
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).json({ error: 'Скачивание недоступно' });
   }
 });
-
-function downloadAudius(videoId, title, artist, res) {
-  const streamUrl = `https://api.audius.co/v1/tracks/${videoId}/stream`;
-
-  https.get(streamUrl, {
-    headers: {
-      'Accept': 'audio/mpeg',
-      'User-Agent': 'MusikFree/1.0'
-    }
-  }, (response) => {
-    if (response.statusCode === 302 || response.statusCode === 301) {
-      https.get(response.headers.location, (redirectRes) => {
-        pipeResponse(redirectRes, res, title, artist);
-      }).on('error', () => {
-        res.status(500).json({ error: 'Скачивание недоступно' });
-      });
-    } else {
-      pipeResponse(response, res, title, artist);
-    }
-  }).on('error', () => {
-    res.status(500).json({ error: 'Скачивание недоступно' });
-  });
-}
-
-function downloadItunes(videoId, title, artist, res) {
-  https.get(videoId, (response) => {
-    if (response.statusCode === 302 || response.statusCode === 301) {
-      https.get(response.headers.location, (redirectRes) => {
-        pipeResponse(redirectRes, res, title, artist);
-      }).on('error', () => {
-        res.status(500).json({ error: 'Скачивание недоступно' });
-      });
-    } else {
-      pipeResponse(response, res, title, artist);
-    }
-  }).on('error', () => {
-    res.status(500).json({ error: 'Скачивание недоступно' });
-  });
-}
 
 function pipeResponse(source, res, title, artist) {
   const chunks = [];
