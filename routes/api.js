@@ -4,7 +4,7 @@ const https = require('https');
 
 let tracksStore = [];
 
-// Поиск через Jamendo (полные треки)
+// Поиск через Audius API (бесплатный, полные треки)
 router.post('/search', (req, res) => {
   const { query } = req.body;
 
@@ -12,21 +12,24 @@ router.post('/search', (req, res) => {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  const clientId = '56d30c95';
-  const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&search=${encodeURIComponent(query)}&limit=10`;
+  const url = `https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&limit=10`;
 
-  https.get(url, (response) => {
+  https.get(url, {
+    headers: {
+      'Accept': 'application/json',
+      'User-Agent': 'MusikFree/1.0'
+    }
+  }, (response) => {
     let data = '';
     response.on('data', chunk => data += chunk);
     response.on('end', () => {
       try {
         const json = JSON.parse(data);
-        const results = (json.results || []).map(item => ({
-          title: item.name || 'Без названия',
-          artist: item.artist_name || 'Неизвестен',
-          videoId: item.audio || '',
-          duration: Math.round(item.duration || 0),
-          coverUrl: item.album_image || ''
+        const results = (json.data || []).map(item => ({
+          title: item.title || 'Без названия',
+          artist: item.user?.name || 'Неизвестен',
+          videoId: item.id || '',
+          duration: Math.round(item.duration || 0)
         })).filter(r => r.videoId);
 
         res.json({ success: true, results });
@@ -46,28 +49,35 @@ router.post('/download', (req, res) => {
     return res.status(400).json({ error: 'Выбери трек' });
   }
 
-  const finalName = `${Date.now()}.mp3`;
+  // Получаем прямую ссылку на трек
+  const streamUrl = `https://api.audius.co/v1/tracks/${videoId}/stream`;
 
-  https.get(videoId, (response) => {
+  https.get(streamUrl, {
+    headers: {
+      'Accept': 'audio/mpeg',
+      'User-Agent': 'MusikFree/1.0'
+    }
+  }, (response) => {
     if (response.statusCode === 302 || response.statusCode === 301) {
       https.get(response.headers.location, (redirectRes) => {
-        pipeResponse(redirectRes, res, finalName, title, artist);
+        pipeResponse(redirectRes, res, title, artist);
       }).on('error', () => {
         res.status(500).json({ error: 'Скачивание недоступно' });
       });
     } else {
-      pipeResponse(response, res, finalName, title, artist);
+      pipeResponse(response, res, title, artist);
     }
   }).on('error', () => {
     res.status(500).json({ error: 'Скачивание недоступно' });
   });
 });
 
-function pipeResponse(source, res, finalName, title, artist) {
+function pipeResponse(source, res, title, artist) {
   const chunks = [];
   source.on('data', chunk => chunks.push(chunk));
   source.on('end', () => {
     const buffer = Buffer.concat(chunks);
+    const finalName = `${Date.now()}.mp3`;
 
     tracksStore.push({ 
       name: finalName, 
