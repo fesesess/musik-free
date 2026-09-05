@@ -229,7 +229,7 @@ function showSearchResults(results) {
       <span class="result-index">${index + 1}</span>
       <div class="result-info">
         <div class="result-title">${result.title}</div>
-        <div class="result-artist">${result.artist} | ${result.source} | ${result.isFull ? 'Полный' : '30 сек'}</div>
+        <div class="result-artist">${result.artist}</div>
       </div>
     `;
     item.addEventListener('click', () => {
@@ -259,8 +259,7 @@ async function downloadSelected(result) {
       body: JSON.stringify({
         videoId: result.videoId,
         title: result.title,
-        artist: result.artist,
-        source: result.source
+        artist: result.artist
       })
     });
 
