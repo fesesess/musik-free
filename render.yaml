@@ -2,5 +2,5 @@ services:
   - type: web
     name: musik-free
     env: node
-    buildCommand: npm install
+    buildCommand: npm install && apt-get update && apt-get install -y ffmpeg
     startCommand: node server.js
