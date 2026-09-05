@@ -287,7 +287,7 @@ function createCustomPlayer(trackUrl, cleanName) {
   playerDiv.className = 'custom-player';
 
   const audio = document.createElement('audio');
-  audio.src = trackUrl;
+  audio.src = trackUrl.replace('/downloads/', '/api/stream/');
   audio.preload = 'auto';
 
   const playBtn = document.createElement('button');
@@ -373,7 +373,7 @@ async function deleteTrack(name) {
     const data = await response.json();
 
     if (data.success) {
-      delete trackNames[name + '.mp3'];
+      delete trackNames[name];
       localStorage.setItem('trackNames', JSON.stringify(trackNames));
       statusDiv.textContent = '🗑 Трек удалён';
       loadTracks();
@@ -400,19 +400,15 @@ async function loadTracks() {
     }
 
     tracks.forEach(track => {
-      const fileName = track.url.split('/').pop();
-      const cleanName = trackNames[fileName] || track.name.replace(/_/g, ' ');
+      const cleanName = `${track.artist} - ${track.title}`;
       const div = document.createElement('div');
       div.className = 'track-item';
 
-      const coverHtml = track.coverUrl 
-        ? `<img src="${track.coverUrl}" class="cover" alt="cover">` 
-        : '<div class="cover no-cover">🎵</div>';
+      const coverHtml = '<div class="cover no-cover">🎵</div>';
 
       const actionsHtml = `
         <div class="track-actions">
-          <button class="add-btn" data-url="${track.url}" data-name="${cleanName}" data-cover="${track.coverUrl || ''}">＋</button>
-          <a href="${track.url}" download class="dl-btn">⬇</a>
+          <button class="add-btn" data-url="${track.url}" data-name="${cleanName}" data-cover="">＋</button>
           <button class="delete-btn" data-name="${track.name}">🗑</button>
         </div>
       `;
@@ -477,7 +473,6 @@ function renderPlaylist() {
     const div = document.createElement('div');
     div.className = 'playlist-item';
     div.innerHTML = `
-      ${track.cover ? `<img src="${track.cover}" class="cover-small" alt="">` : '<div class="cover-small no-cover">🎵</div>'}
       <span>${track.name}</span>
       <button class="remove-btn" data-index="${index}">✕</button>
     `;
