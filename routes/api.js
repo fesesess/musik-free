@@ -8,7 +8,19 @@ let tracksStore = [];
 const yandexSessionId = process.env.YANDEX_SESSION_ID || '';
 const yandexUid = process.env.YANDEX_UID || '';
 
-// Поиск в Яндекс Музыке
+function createApi() {
+  const api = new YandexMusicApi();
+  
+  if (yandexSessionId && yandexUid) {
+    api.headers = {
+      'X-Yandex-Music-Client': 'YandexMusicAPI',
+      'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`
+    };
+  }
+  
+  return api;
+}
+
 router.post('/search', async (req, res) => {
   const { query } = req.body;
 
@@ -17,15 +29,7 @@ router.post('/search', async (req, res) => {
   }
 
   try {
-    const api = new YandexMusicApi();
-    
-    if (yandexSessionId && yandexUid) {
-      await api.setSession({
-        sessionId: yandexSessionId,
-        uid: parseInt(yandexUid)
-      });
-    }
-
+    const api = createApi();
     const searchResult = await api.searchTracks(query);
     
     const results = (searchResult.tracks?.results || []).slice(0, 10).map(track => ({
@@ -43,7 +47,6 @@ router.post('/search', async (req, res) => {
   }
 });
 
-// Скачивание из Яндекс Музыки
 router.post('/download', async (req, res) => {
   const { videoId, title, artist } = req.body;
 
@@ -52,19 +55,11 @@ router.post('/download', async (req, res) => {
   }
 
   try {
-    const api = new YandexMusicApi();
-    
-    if (yandexSessionId && yandexUid) {
-      await api.setSession({
-        sessionId: yandexSessionId,
-        uid: parseInt(yandexUid)
-      });
-    }
-
+    const api = createApi();
     const downloadUrl = await api.getTrackDownloadUrl(videoId);
     
     if (!downloadUrl) {
-      return res.status(500).json({ error: 'Не удалось получить ссылку на скачивание' });
+      return res.status(500).json({ error: 'Не удалось получить ссылку' });
     }
 
     https.get(downloadUrl, (response) => {
