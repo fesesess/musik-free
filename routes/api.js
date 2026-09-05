@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const path = require('path');
 const { exec } = require('child_process');
 
 let tracksStore = [];
@@ -12,8 +11,7 @@ router.post('/search', (req, res) => {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  const ytdlpPath = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
-  const command = `"${ytdlpPath}" --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
+  const command = `yt-dlp --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
 
   exec(command, { timeout: 30000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
@@ -50,11 +48,10 @@ router.post('/download', (req, res) => {
   }
 
   const finalName = `${Date.now()}.mp3`;
-  const finalPath = path.join('/tmp', finalName);
-  const ytdlpPath = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
+  const finalPath = `/tmp/${finalName}`;
 
   const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const command = `"${ytdlpPath}" -x --audio-format mp3 -o "${finalPath}" "${url}"`;
+  const command = `yt-dlp -x --audio-format mp3 -o "${finalPath}" "${url}"`;
 
   exec(command, { timeout: 120000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
