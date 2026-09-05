@@ -4,7 +4,6 @@ const https = require('https');
 
 let tracksStore = [];
 
-// Поиск через iTunes API (бесплатно, без блокировок)
 router.post('/search', (req, res) => {
   const { query } = req.body;
 
@@ -38,7 +37,6 @@ router.post('/search', (req, res) => {
   });
 });
 
-// Скачивание превью из iTunes
 router.post('/download', (req, res) => {
   const { videoId, title, artist } = req.body;
 
@@ -68,18 +66,17 @@ function pipeResponse(source, res, finalName, title, artist) {
   source.on('data', chunk => chunks.push(chunk));
   source.on('end', () => {
     const buffer = Buffer.concat(chunks);
-    const fileUrl = `/downloads/${finalName}`;
+
     tracksStore.push({ 
       name: finalName, 
-      url: fileUrl, 
       title, 
       artist,
-      buffer: buffer.toString('base64')
+      buffer: buffer
     });
 
     res.json({
       success: true,
-      fileUrl,
+      fileUrl: `/api/stream/${finalName}`,
       title,
       artist,
       message: `Трек "${title}" скачан`
@@ -88,7 +85,12 @@ function pipeResponse(source, res, finalName, title, artist) {
 }
 
 router.get('/tracks', (req, res) => {
-  res.json(tracksStore.map(t => ({ name: t.name, url: t.url, title: t.title, artist: t.artist })));
+  res.json(tracksStore.map(t => ({ 
+    name: t.name, 
+    url: `/api/stream/${t.name}`, 
+    title: t.title, 
+    artist: t.artist 
+  })));
 });
 
 router.get('/stream/:name', (req, res) => {
@@ -97,9 +99,9 @@ router.get('/stream/:name', (req, res) => {
     return res.status(404).json({ error: 'Трек не найден' });
   }
 
-  const buffer = Buffer.from(track.buffer, 'base64');
   res.setHeader('Content-Type', 'audio/mp4');
-  res.send(buffer);
+  res.setHeader('Content-Length', track.buffer.length);
+  res.send(track.buffer);
 });
 
 router.delete('/track/:name', (req, res) => {

@@ -16,7 +16,6 @@ const userDisplay = document.getElementById('userDisplay');
 const authStatus = document.getElementById('authStatus');
 
 let playlist = JSON.parse(localStorage.getItem('playlist') || '[]');
-let trackNames = JSON.parse(localStorage.getItem('trackNames') || '{}');
 let currentUser = localStorage.getItem('currentUser') || null;
 let audioContext, analyser, dataArray;
 let isPlaying = false;
@@ -267,10 +266,6 @@ async function downloadSelected(result) {
     const data = await response.json();
 
     if (data.success) {
-      const fileName = data.fileUrl.split('/').pop();
-      const fullName = `${data.artist} - ${data.title}`;
-      trackNames[fileName] = fullName;
-      localStorage.setItem('trackNames', JSON.stringify(trackNames));
       statusDiv.textContent = '✅ Готово!';
       searchInput.value = '';
       loadTracks();
@@ -373,8 +368,6 @@ async function deleteTrack(name) {
     const data = await response.json();
 
     if (data.success) {
-      delete trackNames[name];
-      localStorage.setItem('trackNames', JSON.stringify(trackNames));
       statusDiv.textContent = '🗑 Трек удалён';
       loadTracks();
     } else {
