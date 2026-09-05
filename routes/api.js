@@ -1,89 +1,169 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
-const { exec } = require('child_process');
-const fs = require('fs');
-const ffmpegPath = require('ffmpeg-static');
 
 let tracksStore = [];
 
-// Поиск в Audius
-router.post('/search', (req, res) => {
+const SOUNDCLOUD_CLIENT_ID = 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX';
+
+// Поиск в нескольких источниках
+router.post('/search', async (req, res) => {
   const { query } = req.body;
 
   if (!query) {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  const audiusUrl = `https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&limit=15`;
-
-  https.get(audiusUrl, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'MusikFree/1.0'
-    }
-  }, (response) => {
-    let data = '';
-    response.on('data', chunk => data += chunk);
-    response.on('end', () => {
-      try {
-        const json = JSON.parse(data);
-        const results = (json.data || []).map(item => ({
-          title: item.title || 'Без названия',
-          artist: item.user?.name || 'Неизвестен',
-          videoId: item.id || '',
-          duration: Math.round(item.duration || 0),
-          source: 'Audius'
-        })).filter(r => r.videoId && r.duration > 60);
-
-        res.json({ success: true, results });
-      } catch (err) {
-        res.status(500).json({ error: 'Ошибка поиска' });
-      }
-    });
-  }).on('error', () => {
-    res.status(500).json({ error: 'Сервер поиска недоступен' });
-  });
+  try {
+    const audiusResults = await searchAudius(query);
+    const jamendoResults = await searchJamendo(query);
+    const soundcloudResults = await searchSoundCloud(query);
+    
+    const allResults = [...soundcloudResults, ...audiusResults, ...jamendoResults];
+    
+    res.json({ success: true, results: allResults });
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка поиска' });
+  }
 });
 
-// Скачивание из Audius + конвертация в MP3
+function searchAudius(query) {
+  return new Promise((resolve) => {
+    const url = `https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&limit=10`;
+
+    https.get(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'MusikFree/1.0'
+      }
+    }, (response) => {
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const results = (json.data || []).map(item => ({
+            title: item.title || 'Без названия',
+            artist: item.user?.name || 'Неизвестен',
+            videoId: item.id || '',
+            duration: Math.round(item.duration || 0),
+            source: 'Audius'
+          })).filter(r => r.videoId && r.duration > 60);
+          resolve(results);
+        } catch (err) {
+          resolve([]);
+        }
+      });
+    }).on('error', () => resolve([]));
+  });
+}
+
+function searchJamendo(query) {
+  return new Promise((resolve) => {
+    const clientId = '56d30c95';
+    const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${clientId}&format=json&search=${encodeURIComponent(query)}&limit=10`;
+
+    https.get(url, (response) => {
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const results = (json.results || []).map(item => ({
+            title: item.name || 'Без названия',
+            artist: item.artist_name || 'Неизвестен',
+            videoId: item.id || '',
+            duration: Math.round(item.duration || 0),
+            source: 'Jamendo',
+            audioUrl: item.audio || ''
+          })).filter(r => r.videoId && r.duration > 60);
+          resolve(results);
+        } catch (err) {
+          resolve([]);
+        }
+      });
+    }).on('error', () => resolve([]));
+  });
+}
+
+function searchSoundCloud(query) {
+  return new Promise((resolve) => {
+    const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&client_id=${SOUNDCLOUD_CLIENT_ID}&limit=10`;
+
+    https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'application/json'
+      }
+    }, (response) => {
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const results = (json.collection || []).map(item => ({
+            title: item.title || 'Без названия',
+            artist: item.user?.username || 'Неизвестен',
+            videoId: item.id || '',
+            duration: Math.round((item.duration || 0) / 1000),
+            source: 'SoundCloud'
+          })).filter(r => r.videoId && r.duration > 60);
+          resolve(results);
+        } catch (err) {
+          resolve([]);
+        }
+      });
+    }).on('error', () => resolve([]));
+  });
+}
+
+// Скачивание
 router.post('/download', (req, res) => {
-  const { videoId, title, artist } = req.body;
+  const { videoId, title, artist, source, audioUrl } = req.body;
 
   if (!videoId) {
     return res.status(400).json({ error: 'Выбери трек' });
   }
 
-  const streamUrl = `https://api.audius.co/v1/tracks/${videoId}/stream`;
+  if (source === 'Jamendo' && audioUrl) {
+    downloadFromUrl(audioUrl, res, title, artist);
+  } else if (source === 'SoundCloud') {
+    const streamUrl = `https://api-v2.soundcloud.com/tracks/${videoId}/stream?client_id=${SOUNDCLOUD_CLIENT_ID}`;
+    downloadFromUrl(streamUrl, res, title, artist);
+  } else {
+    const streamUrl = `https://api.audius.co/v1/tracks/${videoId}/stream`;
+    downloadFromUrl(streamUrl, res, title, artist);
+  }
+});
 
-  https.get(streamUrl, {
+function downloadFromUrl(url, res, title, artist) {
+  https.get(url, {
     headers: {
       'Accept': 'audio/mpeg',
-      'User-Agent': 'MusikFree/1.0'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     }
   }, (response) => {
     if (response.statusCode === 302 || response.statusCode === 301) {
       https.get(response.headers.location, (redirectRes) => {
-        downloadBuffer(redirectRes, res, title, artist);
+        pipeResponse(redirectRes, res, title, artist);
       }).on('error', () => {
         res.status(500).json({ error: 'Скачивание недоступно' });
       });
     } else {
-      downloadBuffer(response, res, title, artist);
+      pipeResponse(response, res, title, artist);
     }
   }).on('error', () => {
     res.status(500).json({ error: 'Скачивание недоступно' });
   });
-});
+}
 
-function downloadBuffer(source, res, title, artist) {
+function pipeResponse(source, res, title, artist) {
   const chunks = [];
   source.on('data', chunk => chunks.push(chunk));
   source.on('end', () => {
     const buffer = Buffer.concat(chunks);
     const finalName = `${Date.now()}.mp3`;
 
-    // Сохраняем как есть — Audius отдаёт MP3
     tracksStore.push({ 
       name: finalName, 
       title, 
