@@ -1,13 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-// Хранилище треков в памяти
 let tracksStore = [];
 
-// Поиск через yt-dlp (если установлен) или заглушка
 router.post('/search', (req, res) => {
   const { query } = req.body;
 
@@ -15,12 +12,13 @@ router.post('/search', (req, res) => {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  const command = `yt-dlp --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
+  const ytdlpPath = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
+  const command = `"${ytdlpPath}" --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
 
   exec(command, { timeout: 30000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
       console.error('yt-dlp error:', stderr || error);
-      return res.status(500).json({ error: 'Поиск недоступен на сервере' });
+      return res.status(500).json({ error: 'Поиск недоступен' });
     }
 
     const results = stdout
@@ -53,26 +51,23 @@ router.post('/download', (req, res) => {
 
   const finalName = `${Date.now()}.mp3`;
   const finalPath = path.join('/tmp', finalName);
+  const ytdlpPath = path.join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
 
   const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const command = `yt-dlp -x --audio-format mp3 -o "${finalPath}" "${url}"`;
+  const command = `"${ytdlpPath}" -x --audio-format mp3 -o "${finalPath}" "${url}"`;
 
   exec(command, { timeout: 120000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
       console.error('download error:', stderr || error);
-      return res.status(500).json({ error: 'Скачивание недоступно на сервере' });
+      return res.status(500).json({ error: 'Скачивание недоступно' });
     }
 
-    tracksStore.push({
-      name: finalName,
-      url: `/downloads/${finalName}`,
-      title,
-      artist
-    });
+    const fileUrl = `/downloads/${finalName}`;
+    tracksStore.push({ name: finalName, url: fileUrl, title, artist });
 
     res.json({
       success: true,
-      fileUrl: `/downloads/${finalName}`,
+      fileUrl,
       title,
       artist,
       message: `Трек "${title}" скачан`
