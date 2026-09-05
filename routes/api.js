@@ -1,9 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
-const { exec } = require('child_process');
-const fs = require('fs');
-const ffmpegPath = require('ffmpeg-static');
 
 let tracksStore = [];
 
@@ -64,86 +61,33 @@ router.post('/search', async (req, res) => {
   }
 });
 
-router.post('/download', async (req, res) => {
+// Добавляем трек в список без скачивания
+router.post('/download', (req, res) => {
   const { videoId, title, artist } = req.body;
 
   if (!videoId) {
     return res.status(400).json({ error: 'Выбери трек' });
   }
 
-  try {
-    const streamUrl = `https://api.music.yandex.net/tracks/${videoId}/stream`;
-    
-    https.get(streamUrl, {
-      headers: {
-        'Authorization': `OAuth ${yandexToken}`,
-        'X-Yandex-Music-Client': 'YandexMusicAPI'
-      }
-    }, (response) => {
-      if (response.statusCode === 302 || response.statusCode === 301) {
-        https.get(response.headers.location, (redirectRes) => {
-          downloadAndConvert(redirectRes, res, title, artist);
-        }).on('error', () => {
-          res.status(500).json({ error: 'Скачивание недоступно' });
-        });
-      } else {
-        downloadAndConvert(response, res, title, artist);
-      }
-    }).on('error', () => {
-      res.status(500).json({ error: 'Скачивание недоступно' });
-    });
-  } catch (err) {
-    console.error('Download error:', err);
-    res.status(500).json({ error: 'Скачивание недоступно' });
-  }
-});
+  const finalName = `${Date.now()}.m4a`;
+  const streamUrl = `https://api.music.yandex.net/tracks/${videoId}/stream`;
 
-function downloadAndConvert(source, res, title, artist) {
-  const chunks = [];
-  source.on('data', chunk => chunks.push(chunk));
-  source.on('end', () => {
-    const buffer = Buffer.concat(chunks);
-    const tempName = `/tmp/${Date.now()}.m4a`;
-    const finalName = `${Date.now()}.mp3`;
-    const finalPath = `/tmp/${finalName}`;
-
-    fs.writeFileSync(tempName, buffer);
-
-    const command = `"${ffmpegPath}" -i ${tempName} -codec:a libmp3lame -qscale:a 2 ${finalPath}`;
-
-    exec(command, (error) => {
-      if (error) {
-        console.error('ffmpeg error:', error);
-        tracksStore.push({ 
-          name: finalName, 
-          title, 
-          artist,
-          buffer: buffer
-        });
-      } else {
-        const mp3Buffer = fs.readFileSync(finalPath);
-        tracksStore.push({ 
-          name: finalName, 
-          title, 
-          artist,
-          buffer: mp3Buffer
-        });
-        try {
-          fs.unlinkSync(tempName);
-          fs.unlinkSync(finalPath);
-        } catch(e) {}
-      }
-
-      res.json({
-        success: true,
-        fileUrl: `/api/stream/${finalName}`,
-        title,
-        artist,
-        message: `Трек "${title}" скачан`
-      });
-    });
+  tracksStore.push({ 
+    name: finalName, 
+    title, 
+    artist,
+    streamUrl: streamUrl,
+    yandexToken: yandexToken
   });
-}
+
+  res.json({
+    success: true,
+    fileUrl: `/api/stream/${finalName}`,
+    title,
+    artist,
+    message: `Трек "${title}" добавлен`
+  });
+});
 
 router.get('/tracks', (req, res) => {
   res.json(tracksStore.map(t => ({ 
@@ -154,15 +98,33 @@ router.get('/tracks', (req, res) => {
   })));
 });
 
+// Проксируем стрим из Яндекса
 router.get('/stream/:name', (req, res) => {
   const track = tracksStore.find(t => t.name === req.params.name);
   if (!track) {
     return res.status(404).json({ error: 'Трек не найден' });
   }
 
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader('Content-Length', track.buffer.length);
-  res.send(track.buffer);
+  https.get(track.streamUrl, {
+    headers: {
+      'Authorization': `OAuth ${track.yandexToken}`,
+      'X-Yandex-Music-Client': 'YandexMusicAPI'
+    }
+  }, (response) => {
+    if (response.statusCode === 302 || response.statusCode === 301) {
+      https.get(response.headers.location, (redirectRes) => {
+        res.setHeader('Content-Type', redirectRes.headers['content-type'] || 'audio/mp4');
+        redirectRes.pipe(res);
+      }).on('error', () => {
+        res.status(500).json({ error: 'Стрим недоступен' });
+      });
+    } else {
+      res.setHeader('Content-Type', response.headers['content-type'] || 'audio/mp4');
+      response.pipe(res);
+    }
+  }).on('error', () => {
+    res.status(500).json({ error: 'Стрим недоступен' });
+  });
 });
 
 router.delete('/track/:name', (req, res) => {
