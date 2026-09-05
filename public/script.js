@@ -283,6 +283,7 @@ function createCustomPlayer(trackUrl, cleanName) {
 
   const audio = document.createElement('audio');
   audio.src = trackUrl;
+  audio.type = 'audio/mpeg';
   audio.preload = 'auto';
 
   const playBtn = document.createElement('button');

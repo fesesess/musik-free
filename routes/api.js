@@ -1,20 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
+const { exec } = require('child_process');
+const fs = require('fs');
+const ffmpegPath = require('ffmpeg-static');
 
 let tracksStore = [];
 
-const yandexToken = process.env.YANDEX_SESSION_ID || '';
-
-// Поиск в Яндексе
-router.post('/search', async (req, res) => {
+// Поиск в Audius
+router.post('/search', (req, res) => {
   const { query } = req.body;
 
   if (!query) {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  // Ищем в Audius
   const audiusUrl = `https://api.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&limit=15`;
 
   https.get(audiusUrl, {
@@ -46,7 +46,7 @@ router.post('/search', async (req, res) => {
   });
 });
 
-// Скачивание из Audius
+// Скачивание из Audius + конвертация в MP3
 router.post('/download', (req, res) => {
   const { videoId, title, artist } = req.body;
 
@@ -64,25 +64,26 @@ router.post('/download', (req, res) => {
   }, (response) => {
     if (response.statusCode === 302 || response.statusCode === 301) {
       https.get(response.headers.location, (redirectRes) => {
-        pipeResponse(redirectRes, res, title, artist);
+        downloadBuffer(redirectRes, res, title, artist);
       }).on('error', () => {
         res.status(500).json({ error: 'Скачивание недоступно' });
       });
     } else {
-      pipeResponse(response, res, title, artist);
+      downloadBuffer(response, res, title, artist);
     }
   }).on('error', () => {
     res.status(500).json({ error: 'Скачивание недоступно' });
   });
 });
 
-function pipeResponse(source, res, title, artist) {
+function downloadBuffer(source, res, title, artist) {
   const chunks = [];
   source.on('data', chunk => chunks.push(chunk));
   source.on('end', () => {
     const buffer = Buffer.concat(chunks);
     const finalName = `${Date.now()}.mp3`;
 
+    // Сохраняем как есть — Audius отдаёт MP3
     tracksStore.push({ 
       name: finalName, 
       title, 
@@ -117,6 +118,7 @@ router.get('/stream/:name', (req, res) => {
 
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Length', track.buffer.length);
+  res.setHeader('Accept-Ranges', 'bytes');
   res.send(track.buffer);
 });
 
