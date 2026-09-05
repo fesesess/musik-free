@@ -4,8 +4,7 @@ const https = require('https');
 
 let tracksStore = [];
 
-const yandexSessionId = process.env.YANDEX_SESSION_ID || '';
-const yandexUid = process.env.YANDEX_UID || '';
+const yandexToken = process.env.YANDEX_SESSION_ID || '';
 
 function yandexRequest(path) {
   return new Promise((resolve, reject) => {
@@ -14,8 +13,8 @@ function yandexRequest(path) {
       path: path,
       method: 'GET',
       headers: {
+        'Authorization': `OAuth ${yandexToken}`,
         'X-Yandex-Music-Client': 'YandexMusicAPI',
-        'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
       }
     };
@@ -79,7 +78,7 @@ router.post('/download', async (req, res) => {
 
     https.get(downloadUrl, {
       headers: {
-        'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`
+        'Authorization': `OAuth ${yandexToken}`
       }
     }, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
