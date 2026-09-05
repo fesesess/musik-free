@@ -1,22 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcrypt');
 
-const usersFile = path.join(__dirname, '..', 'data', 'users.json');
-
-function readUsers() {
-  if (!fs.existsSync(usersFile)) {
-    return [];
-  }
-  const data = fs.readFileSync(usersFile, 'utf8');
-  return JSON.parse(data || '[]');
-}
-
-function writeUsers(users) {
-  fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
-}
+// Храним пользователей в памяти
+let users = [];
 
 router.post('/register', async (req, res) => {
   const { username, password } = req.body;
@@ -29,23 +16,17 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Логин минимум 3 символа, пароль минимум 4' });
   }
 
-  const users = readUsers();
-
   if (users.some(u => u.username === username)) {
     return res.status(400).json({ error: 'Пользователь уже существует' });
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const user = {
-    id: Date.now(),
+  users.push({
     username,
     password: hashedPassword,
     createdAt: new Date().toISOString()
-  };
-
-  users.push(user);
-  writeUsers(users);
+  });
 
   res.json({ success: true, message: 'Регистрация успешна' });
 });
@@ -57,7 +38,6 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Введи логин и пароль' });
   }
 
-  const users = readUsers();
   const user = users.find(u => u.username === username);
 
   if (!user) {
