@@ -11,7 +11,7 @@ router.post('/search', (req, res) => {
     return res.status(400).json({ error: 'Введи название трека или строчку' });
   }
 
-  const command = `yt-dlp --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
+  const command = `python3 -m yt_dlp --flat-playlist --print "%(title)s|%(uploader)s|%(id)s|%(duration)s" "ytsearch10:${query} audio"`;
 
   exec(command, { timeout: 30000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
@@ -51,7 +51,7 @@ router.post('/download', (req, res) => {
   const finalPath = `/tmp/${finalName}`;
 
   const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const command = `yt-dlp -x --audio-format mp3 -o "${finalPath}" "${url}"`;
+  const command = `python3 -m yt_dlp -x --audio-format mp3 -o "${finalPath}" "${url}"`;
 
   exec(command, { timeout: 120000, encoding: 'utf8' }, (error, stdout, stderr) => {
     if (error) {
@@ -59,12 +59,11 @@ router.post('/download', (req, res) => {
       return res.status(500).json({ error: 'Скачивание недоступно' });
     }
 
-    const fileUrl = `/downloads/${finalName}`;
-    tracksStore.push({ name: finalName, url: fileUrl, title, artist });
+    tracksStore.push({ name: finalName, url: `/downloads/${finalName}`, title, artist });
 
     res.json({
       success: true,
-      fileUrl,
+      fileUrl: `/downloads/${finalName}`,
       title,
       artist,
       message: `Трек "${title}" скачан`
