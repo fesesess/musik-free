@@ -482,11 +482,14 @@ function renderPlaylist() {
   });
 }
 
-document.getElementById('clearPlaylistBtn').addEventListener('click', () => {
-  playlist = [];
-  localStorage.setItem('playlist', JSON.stringify(playlist));
-  renderPlaylist();
-});
+const clearBtn = document.getElementById('clearPlaylistBtn');
+if (clearBtn) {
+  clearBtn.addEventListener('click', () => {
+    playlist = [];
+    localStorage.setItem('playlist', JSON.stringify(playlist));
+    renderPlaylist();
+  });
+}
 
 loadTracks();
 renderPlaylist();
