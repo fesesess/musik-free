@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
+const { exec } = require('child_process');
+const fs = require('fs');
 
 let tracksStore = [];
 
@@ -79,12 +81,12 @@ router.post('/download', async (req, res) => {
     }, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         https.get(response.headers.location, (redirectRes) => {
-          pipeResponse(redirectRes, res, title, artist);
+          downloadAndConvert(redirectRes, res, title, artist);
         }).on('error', () => {
           res.status(500).json({ error: 'Скачивание недоступно' });
         });
       } else {
-        pipeResponse(response, res, title, artist);
+        downloadAndConvert(response, res, title, artist);
       }
     }).on('error', () => {
       res.status(500).json({ error: 'Скачивание недоступно' });
@@ -95,26 +97,45 @@ router.post('/download', async (req, res) => {
   }
 });
 
-function pipeResponse(source, res, title, artist) {
+function downloadAndConvert(source, res, title, artist) {
   const chunks = [];
   source.on('data', chunk => chunks.push(chunk));
   source.on('end', () => {
     const buffer = Buffer.concat(chunks);
+    const tempName = `/tmp/${Date.now()}.m4a`;
     const finalName = `${Date.now()}.mp3`;
+    const finalPath = `/tmp/${finalName}`;
 
-    tracksStore.push({ 
-      name: finalName, 
-      title, 
-      artist,
-      buffer: buffer
-    });
+    fs.writeFileSync(tempName, buffer);
 
-    res.json({
-      success: true,
-      fileUrl: `/api/stream/${finalName}`,
-      title,
-      artist,
-      message: `Трек "${title}" скачан`
+    exec(`ffmpeg -i ${tempName} -codec:a libmp3lame -qscale:a 2 ${finalPath}`, (error) => {
+      if (error) {
+        // Если ffmpeg нет — отдаём как есть
+        tracksStore.push({ 
+          name: finalName, 
+          title, 
+          artist,
+          buffer: buffer
+        });
+      } else {
+        const mp3Buffer = fs.readFileSync(finalPath);
+        tracksStore.push({ 
+          name: finalName, 
+          title, 
+          artist,
+          buffer: mp3Buffer
+        });
+        fs.unlinkSync(tempName);
+        fs.unlinkSync(finalPath);
+      }
+
+      res.json({
+        success: true,
+        fileUrl: `/api/stream/${finalName}`,
+        title,
+        artist,
+        message: `Трек "${title}" скачан`
+      });
     });
   });
 }
@@ -134,7 +155,7 @@ router.get('/stream/:name', (req, res) => {
     return res.status(404).json({ error: 'Трек не найден' });
   }
 
-  res.setHeader('Content-Type', 'audio/mp4');
+  res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Length', track.buffer.length);
   res.send(track.buffer);
 });
