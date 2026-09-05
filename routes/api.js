@@ -3,6 +3,7 @@ const router = express.Router();
 const https = require('https');
 const { exec } = require('child_process');
 const fs = require('fs');
+const ffmpegPath = require('ffmpeg-static');
 
 let tracksStore = [];
 
@@ -108,9 +109,11 @@ function downloadAndConvert(source, res, title, artist) {
 
     fs.writeFileSync(tempName, buffer);
 
-    exec(`ffmpeg -i ${tempName} -codec:a libmp3lame -qscale:a 2 ${finalPath}`, (error) => {
+    const command = `"${ffmpegPath}" -i ${tempName} -codec:a libmp3lame -qscale:a 2 ${finalPath}`;
+
+    exec(command, (error) => {
       if (error) {
-        // Если ffmpeg нет — отдаём как есть
+        console.error('ffmpeg error:', error);
         tracksStore.push({ 
           name: finalName, 
           title, 
@@ -125,8 +128,10 @@ function downloadAndConvert(source, res, title, artist) {
           artist,
           buffer: mp3Buffer
         });
-        fs.unlinkSync(tempName);
-        fs.unlinkSync(finalPath);
+        try {
+          fs.unlinkSync(tempName);
+          fs.unlinkSync(finalPath);
+        } catch(e) {}
       }
 
       res.json({
