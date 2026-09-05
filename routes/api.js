@@ -73,7 +73,29 @@ router.post('/download', async (req, res) => {
     const downloadUrl = downloadInfo.result?.downloadInfoUrl;
 
     if (!downloadUrl) {
-      return res.status(500).json({ error: 'Не удалось получить ссылку' });
+      // Пробуем альтернативный метод — стриминг
+      const streamUrl = `https://api.music.yandex.net/tracks/${videoId}/stream`;
+      
+      https.get(streamUrl, {
+        headers: {
+          'Authorization': `OAuth ${yandexToken}`,
+          'X-Yandex-Music-Client': 'YandexMusicAPI'
+        }
+      }, (response) => {
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          https.get(response.headers.location, (redirectRes) => {
+            pipeResponse(redirectRes, res, title, artist);
+          }).on('error', () => {
+            res.status(500).json({ error: 'Скачивание недоступно' });
+          });
+        } else {
+          pipeResponse(response, res, title, artist);
+        }
+      }).on('error', () => {
+        res.status(500).json({ error: 'Скачивание недоступно' });
+      });
+      
+      return;
     }
 
     https.get(downloadUrl, {
