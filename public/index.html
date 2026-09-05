@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Musik Free</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="visualizer"></canvas>
+  <div class="container">
+    <div class="auth-box">
+      <span id="userDisplay">Не вошёл</span>
+      <button id="authBtn">Войти</button>
+    </div>
+
+    <div id="authModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <h3>Вход / Регистрация</h3>
+        <input type="text" id="username" placeholder="Логин">
+        <input type="password" id="password" placeholder="Пароль">
+        <div class="modal-buttons">
+          <button id="loginBtn">Войти</button>
+          <button id="registerBtn">Регистрация</button>
+          <button id="closeAuthBtn">Закрыть</button>
+        </div>
+        <div id="authStatus"></div>
+      </div>
+    </div>
+
+    <h1>🎵 Musik Free</h1>
+    <p>Бесплатная музыка без ограничений</p>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Название трека или строчка...">
+      <button id="downloadBtn">Скачать</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="sections">
+      <div class="section">
+        <h2>Скачанные треки</h2>
+        <div id="trackList"></div>
+      </div>
+      <div class="section">
+        <h2>Мой плейлист</h2>
+        <div id="playlist"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
