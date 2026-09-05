@@ -1,24 +1,40 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
-const YandexMusicApi = require('yandex-music-api');
 
 let tracksStore = [];
 
 const yandexSessionId = process.env.YANDEX_SESSION_ID || '';
 const yandexUid = process.env.YANDEX_UID || '';
 
-function createApi() {
-  const api = new YandexMusicApi();
-  
-  if (yandexSessionId && yandexUid) {
-    api.headers = {
-      'X-Yandex-Music-Client': 'YandexMusicAPI',
-      'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`
+function yandexRequest(path) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.music.yandex.net',
+      path: path,
+      method: 'GET',
+      headers: {
+        'X-Yandex-Music-Client': 'YandexMusicAPI',
+        'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      }
     };
-  }
-  
-  return api;
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 router.post('/search', async (req, res) => {
@@ -29,10 +45,9 @@ router.post('/search', async (req, res) => {
   }
 
   try {
-    const api = createApi();
-    const searchResult = await api.searchTracks(query);
+    const searchResult = await yandexRequest(`/search?text=${encodeURIComponent(query)}&type=track&page=0&nocorrect=false`);
     
-    const results = (searchResult.tracks?.results || []).slice(0, 10).map(track => ({
+    const results = (searchResult.result?.tracks?.results || []).slice(0, 10).map(track => ({
       title: track.title || 'Без названия',
       artist: track.artists?.map(a => a.name).join(', ') || 'Неизвестен',
       videoId: track.id || '',
@@ -55,14 +70,18 @@ router.post('/download', async (req, res) => {
   }
 
   try {
-    const api = createApi();
-    const downloadUrl = await api.getTrackDownloadUrl(videoId);
-    
+    const downloadInfo = await yandexRequest(`/tracks/${videoId}/download-info`);
+    const downloadUrl = downloadInfo.result?.downloadInfoUrl;
+
     if (!downloadUrl) {
       return res.status(500).json({ error: 'Не удалось получить ссылку' });
     }
 
-    https.get(downloadUrl, (response) => {
+    https.get(downloadUrl, {
+      headers: {
+        'Cookie': `Session_id=${yandexSessionId}; yandexuid=${yandexUid}`
+      }
+    }, (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         https.get(response.headers.location, (redirectRes) => {
           pipeResponse(redirectRes, res, title, artist);
