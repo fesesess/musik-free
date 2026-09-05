@@ -287,7 +287,7 @@ function createCustomPlayer(trackUrl, cleanName) {
   playerDiv.className = 'custom-player';
 
   const audio = document.createElement('audio');
-  audio.src = trackUrl.replace('/downloads/', '/api/stream/');
+  audio.src = trackUrl;
   audio.preload = 'auto';
 
   const playBtn = document.createElement('button');
@@ -409,6 +409,7 @@ async function loadTracks() {
       const actionsHtml = `
         <div class="track-actions">
           <button class="add-btn" data-url="${track.url}" data-name="${cleanName}" data-cover="">＋</button>
+          <a href="${track.url}" download class="dl-btn">⬇</a>
           <button class="delete-btn" data-name="${track.name}">🗑</button>
         </div>
       `;
